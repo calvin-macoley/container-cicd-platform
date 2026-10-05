@@ -19,7 +19,9 @@
       "Bash(terraform destroy:*)",
       "Bash(ansible-playbook:*)",
       "Bash(docker push:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(podman:*)",
+      "Bash(podman-compose:*)"
     ]
   },
   "hooks": {
