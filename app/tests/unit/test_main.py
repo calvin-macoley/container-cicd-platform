@@ -8,7 +8,7 @@ from httpx import ASGITransport, AsyncClient
 
 
 def _add_crashing_route(app: FastAPI) -> None:
-    @app.get("/boom")
+    @app.get("/boom/now")
     async def boom() -> None:
         raise RuntimeError("kaboom")
 
@@ -20,12 +20,12 @@ async def test_unhandled_error_returns_json_500_with_request_id(
     transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://t") as client:
         with caplog.at_level(logging.ERROR):
-            response = await client.get("/boom", headers={"X-Request-ID": "trace-me"})
+            response = await client.get("/boom/now", headers={"X-Request-ID": "trace-me"})
 
     assert response.status_code == 500
     assert response.json() == {"detail": "Internal Server Error"}
     assert response.headers["x-request-id"] == "trace-me"
-    assert any("kaboom" in (r.exc_text or "") or r.exc_info for r in caplog.records)
+    assert any(r.exc_info and str(r.exc_info[1]) == "kaboom" for r in caplog.records)
 
 
 async def test_lifespan_logs_start_and_stop(app: FastAPI, caplog: pytest.LogCaptureFixture) -> None:

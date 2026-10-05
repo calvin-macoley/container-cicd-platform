@@ -7,8 +7,10 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from shortener.config import Settings
+from shortener.config import ConfigError, Settings, load_db_settings
+from shortener.deps import get_repository
 from shortener.main import create_app
+from tests.fakes import FakeDatabase, FakeLinkRepository
 
 SETTINGS_ENV_VARS = (
     "DATABASE_URL",
@@ -61,11 +63,38 @@ def settings(make_settings: Callable[..., Settings]) -> Settings:
 
 
 @pytest.fixture
-def app(settings: Settings) -> FastAPI:
-    return create_app(settings)
+def repo() -> FakeLinkRepository:
+    return FakeLinkRepository()
+
+
+@pytest.fixture
+def app(settings: Settings, repo: FakeLinkRepository) -> FastAPI:
+    """App wired to in-memory fakes: unit tests never need a database."""
+    application = create_app(settings)
+    application.dependency_overrides[get_repository] = lambda: repo
+    application.state.db = FakeDatabase()
+    return application
 
 
 @pytest.fixture
 async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
+
+
+def _database_configured() -> bool:
+    try:
+        load_db_settings()
+    except ConfigError:
+        return False
+    return True
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Skip integration tests cleanly when DATABASE_URL is not set."""
+    if _database_configured():
+        return
+    skip = pytest.mark.skip(reason="DATABASE_URL is not set")
+    for item in items:
+        if "integration" in item.keywords:
+            item.add_marker(skip)
