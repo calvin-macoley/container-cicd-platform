@@ -8,6 +8,7 @@ from httpx import ASGITransport, AsyncClient
 
 from shortener.config import Settings
 from shortener.metrics import UNMATCHED_ROUTE, Metrics, route_template
+from shortener.middleware.metrics import method_label
 
 
 def _sample(app: FastAPI, name: str, labels: dict[str, str]) -> float | None:
@@ -87,3 +88,16 @@ def test_route_template_without_route() -> None:
 
 def test_separate_apps_have_separate_registries(settings: Settings) -> None:
     assert Metrics(settings).registry is not Metrics(settings).registry
+
+
+async def test_unknown_methods_share_one_label(app: FastAPI, client: AsyncClient) -> None:
+    await client.request("FOOBAR", "/healthz")
+    await client.request("BAZ", "/healthz")
+
+    labels = {"method": "OTHER", "route": "/healthz", "status": "405"}
+    assert _sample(app, "http_requests_total", labels) == 2.0
+
+
+def test_method_label() -> None:
+    assert method_label("GET") == "GET"
+    assert method_label("PROPFIND") == "OTHER"

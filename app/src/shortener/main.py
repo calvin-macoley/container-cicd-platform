@@ -10,7 +10,7 @@ from fastapi import FastAPI
 
 from shortener.chaos import ChaosInjector
 from shortener.config import Settings
-from shortener.db import Database, build_engine
+from shortener.db import Database
 from shortener.metrics import Metrics
 from shortener.middleware.errors import UnhandledErrorMiddleware
 from shortener.middleware.metrics import MetricsMiddleware
@@ -45,7 +45,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.state.settings = settings
     app.state.metrics = metrics = Metrics(settings)
     app.state.chaos = ChaosInjector(settings.chaos_error_rate)
-    app.state.db = db = Database(build_engine(settings))
+    app.state.db = db = Database.from_settings(settings)
 
     app.include_router(health.router)
     app.include_router(meta.router)

@@ -14,6 +14,15 @@ access_logger = logging.getLogger("shortener.access")
 # Probe and scrape traffic is logged at DEBUG to keep INFO logs readable.
 _QUIET_ROUTES = frozenset({"/healthz", "/readyz", "/metrics"})
 
+# Bounded label values regardless of which HTTP parser uvicorn uses.
+_KNOWN_METHODS = frozenset(
+    {"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "CONNECT", "TRACE"}
+)
+
+
+def method_label(method: str) -> str:
+    return method if method in _KNOWN_METHODS else "OTHER"
+
 
 class MetricsMiddleware:
     def __init__(self, app: ASGIApp, metrics: Metrics) -> None:
@@ -25,6 +34,8 @@ class MetricsMiddleware:
             await self.app(scope, receive, send)
             return
 
+        # Stays 500 only if no response was ever sent: a server-side failure
+        # (uvicorn does not cancel the app when a client disconnects).
         status = 500
         start = time.perf_counter()
 
@@ -39,7 +50,7 @@ class MetricsMiddleware:
         finally:
             duration = time.perf_counter() - start
             route = route_template(scope)
-            method = scope["method"]
+            method = method_label(scope["method"])
             self.metrics.observe(method, route, status, duration)
             access_logger.log(
                 logging.DEBUG if route in _QUIET_ROUTES else logging.INFO,

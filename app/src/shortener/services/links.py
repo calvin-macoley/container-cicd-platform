@@ -69,9 +69,10 @@ async def create_link(
     expires_at: datetime | None,
     public_base: str,
     now: datetime,
-    generate: Callable[[], str] = generate_code,
+    generate: Callable[[], str] | None = None,
 ) -> LinkRecord:
     _validate(target_url, alias, expires_at, public_base, now)
+    generate = generate or generate_code
 
     if alias is not None:
         try:

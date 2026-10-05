@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -11,6 +12,8 @@ from shortener.deps import RepositoryDep, SettingsDep
 from shortener.repository import LinkRecord
 from shortener.schemas import LinkCreate, LinkResponse
 from shortener.services import links as service
+
+logger = logging.getLogger(__name__)
 
 # Chaos applies to every /api/* route (see shortener.chaos).
 router = APIRouter(prefix="/api/links", tags=["links"], dependencies=[Depends(inject_chaos)])
@@ -49,6 +52,13 @@ async def create_link(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
     except service.AliasConflictError:
         raise HTTPException(status.HTTP_409_CONFLICT, "Alias already in use") from None
+    except service.CodeGenerationError:
+        logger.error(
+            "could not generate a free code", extra={"attempts": service.MAX_GENERATE_ATTEMPTS}
+        )
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "Could not allocate a short code; retry"
+        ) from None
     response.headers["Location"] = f"/api/links/{record.code}"
     return to_response(record, settings.public_base, now)
 
