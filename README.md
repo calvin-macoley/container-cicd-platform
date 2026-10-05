@@ -25,6 +25,7 @@ everywhere; only environment variables differ.
 | `GET` | `/api/links/{code}` | 200 | 404 | Link details and click stats (expired links included, with `is_expired`) |
 | `DELETE` | `/api/links/{code}` | 204 | 404 | Delete a link |
 | `GET` | `/{code}` | 307 redirect | 404 missing or expired | Follow a short link and count the click |
+| `HEAD` | `/{code}` | 307 redirect | 404 missing or expired | Same response as `GET` (no body), **without** counting a click; for link checkers and unfurlers |
 | `GET` | `/healthz` | 200 | | Liveness; never touches the database |
 | `GET` | `/readyz` | 200 | 503 | Readiness; checks the database |
 | `GET` | `/version` | 200 | | `{"version", "git_sha", "environment"}` |

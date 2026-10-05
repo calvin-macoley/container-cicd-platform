@@ -47,6 +47,12 @@ class FakeLinkRepository:
         self.links[code] = replace(record, click_count=record.click_count + 1, last_clicked_at=now)
         return record.target_url
 
+    async def get_active_target(self, code: str) -> str | None:
+        record = self.links.get(code)
+        if record is None or (record.expires_at is not None and record.expires_at <= self.clock()):
+            return None
+        return record.target_url
+
     async def delete(self, code: str) -> bool:
         return self.links.pop(code, None) is not None
 

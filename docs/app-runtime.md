@@ -325,7 +325,7 @@ rollback works.
 
 | Path | Purpose | Expose publicly? |
 |---|---|---|
-| `GET /{code}` | Redirect | Yes |
+| `GET /{code}`, `HEAD /{code}` | Redirect (HEAD does not count a click) | Yes |
 | `/api/links…` | Create, read, delete links | See limitation below |
 | `/healthz`, `/readyz` | Probes | Not needed |
 | `/version` | Build identity | Harmless; your choice |

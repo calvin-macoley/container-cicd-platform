@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 
 import pytest
 from httpx import AsyncClient
@@ -56,3 +57,35 @@ async def test_redirect_before_expiry_works(client: AsyncClient, engine: AsyncEn
         )
 
     assert (await client.get("/soon")).status_code == 307
+
+
+async def _click_state(engine: AsyncEngine, code: str) -> tuple[int, datetime | None]:
+    async with engine.connect() as conn:
+        row = (
+            await conn.execute(
+                text("SELECT click_count, last_clicked_at FROM links WHERE code = :c"), {"c": code}
+            )
+        ).one()
+    return row.click_count, row.last_clicked_at
+
+
+async def test_head_redirects_without_counting(client: AsyncClient, engine: AsyncEngine) -> None:
+    await client.post("/api/links", json={"url": "https://example.com/h", "alias": "headx"})
+    await client.get("/headx")
+    before = await _click_state(engine, "headx")
+    assert before[0] == 1
+
+    responses = [await client.head("/headx") for _ in range(3)]
+
+    assert all(r.status_code == 307 for r in responses)
+    assert all(r.headers["location"] == "https://example.com/h" for r in responses)
+    assert await _click_state(engine, "headx") == before  # count and last-click time unchanged
+
+
+async def test_head_expired_is_404(client: AsyncClient, engine: AsyncEngine) -> None:
+    await client.post("/api/links", json={"url": "https://example.com", "alias": "headold"})
+    async with engine.begin() as conn:
+        await conn.execute(
+            text("UPDATE links SET expires_at = now() - interval '1 second' WHERE code = 'headold'")
+        )
+    assert (await client.head("/headold")).status_code == 404

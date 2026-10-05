@@ -46,6 +46,10 @@ class LinkRepository(Protocol):
         """Atomically count a click on an unexpired link and return its target, else None."""
         ...
 
+    async def get_active_target(self, code: str) -> str | None:
+        """Target of an unexpired link without counting a click, else None."""
+        ...
+
     async def delete(self, code: str) -> bool:
         """Delete the link; False if it did not exist."""
         ...
@@ -104,6 +108,15 @@ class SqlLinkRepository:
         target = (await self.session.execute(stmt)).scalar_one_or_none()
         await self.session.commit()
         return target
+
+    async def get_active_target(self, code: str) -> str | None:
+        # Same expiry rule as resolve_and_count (database clock), but read-only.
+        stmt = (
+            select(Link.target_url)
+            .where(Link.code == code)
+            .where(or_(Link.expires_at.is_(None), Link.expires_at > func.now()))
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def delete(self, code: str) -> bool:
         stmt = delete(Link).where(Link.code == code).returning(Link.id)

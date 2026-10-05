@@ -99,6 +99,14 @@ async def resolve_link(repo: LinkRepository, code: str) -> str:
     return target
 
 
+async def peek_link(repo: LinkRepository, code: str) -> str:
+    """Return the redirect target without counting a click (HEAD requests)."""
+    target = await repo.get_active_target(code)
+    if target is None:
+        raise LinkNotFoundError(code)
+    return target
+
+
 async def get_link(repo: LinkRepository, code: str) -> LinkRecord:
     """Return link details, including expired links (management view)."""
     record = await repo.get(code)
