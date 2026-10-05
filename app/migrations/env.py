@@ -66,15 +66,11 @@ async def run_migrations_online() -> None:
         await engine.dispose()
 
 
+# Tests run migrations in-process and keep pytest's log capture.
 if context.config.attributes.get("configure_logging", True):
     configure_logging("INFO")
 
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    connection = context.config.attributes.get("connection")
-    if connection is None:
-        asyncio.run(run_migrations_online())
-    else:
-        # Called programmatically with an existing connection (integration tests).
-        _run_sync(connection)
+    asyncio.run(run_migrations_online())

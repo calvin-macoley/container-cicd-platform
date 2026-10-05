@@ -73,6 +73,9 @@ markers = [
 [tool.coverage.run]
 source = ["shortener"]
 branch = true
+# SQLAlchemy async runs DB calls in greenlets; without this, lines after an
+# await inside the repository are reported as missed even though they ran.
+concurrency = ["greenlet", "thread"]
 
 [tool.coverage.report]
 fail_under = 85
