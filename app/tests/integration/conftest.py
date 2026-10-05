@@ -1,7 +1,8 @@
-"""Fixtures for tests against a real PostgreSQL at DATABASE_URL.
+"""Fixtures for tests against a real PostgreSQL at TEST_DATABASE_URL.
 
-The database is migrated to head once per session and the links table is
-truncated before each test, so point DATABASE_URL at a disposable database.
+The database is migrated to head once per session, the links table is
+truncated before each test, and the migration tests drop it. Point
+TEST_DATABASE_URL at a disposable database. DATABASE_URL is never used.
 """
 
 from __future__ import annotations
@@ -16,32 +17,42 @@ from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from shortener.config import Settings, load_db_settings
+from shortener.config import DbSettings, Settings
 from shortener.db import build_engine
 from shortener.main import create_app
+from tests.conftest import integration_db_settings
 
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 
 
-def alembic_config() -> Config:
+def alembic_config(db_settings: DbSettings) -> Config:
     config = Config(str(ALEMBIC_INI))
     config.attributes["configure_logging"] = False
+    # Passed explicitly so migrations/env.py never falls back to DATABASE_URL.
+    config.attributes["database_url"] = db_settings.async_database_url
     return config
 
 
 @pytest.fixture(scope="session")
-def database_url() -> str:
-    return load_db_settings().database_url.get_secret_value()
+def db_settings() -> DbSettings:
+    settings = integration_db_settings()
+    assert settings is not None, "integration tests are skipped without TEST_DATABASE_URL"
+    return settings
 
 
 @pytest.fixture(scope="session")
-def migrated(database_url: str) -> None:
-    command.upgrade(alembic_config(), "head")
+def database_url(db_settings: DbSettings) -> str:
+    return db_settings.database_url.get_secret_value()
 
 
 @pytest.fixture(scope="session")
-async def engine(migrated: None) -> AsyncIterator[AsyncEngine]:
-    eng = build_engine(load_db_settings())
+def migrated(db_settings: DbSettings) -> None:
+    command.upgrade(alembic_config(db_settings), "head")
+
+
+@pytest.fixture(scope="session")
+async def engine(db_settings: DbSettings, migrated: None) -> AsyncIterator[AsyncEngine]:
+    eng = build_engine(db_settings)
     yield eng
     await eng.dispose()
 

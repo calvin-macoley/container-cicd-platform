@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr, ValidationError
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
-from shortener.config import ConfigError, Settings, load_db_settings
+from shortener.config import DbSettings, Settings
 from shortener.deps import get_repository
 from shortener.main import create_app
 from tests.fakes import FakeDatabase, FakeLinkRepository
@@ -82,19 +87,64 @@ async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
         yield c
 
 
-def _database_configured() -> bool:
+# --- Integration database: TEST_DATABASE_URL only ----------------------------
+#
+# Tests never use DATABASE_URL: it may name a real development database, and
+# integration tests truncate and drop tables. pytest_configure removes it from
+# the environment for the whole run; its value is kept only to refuse a
+# TEST_DATABASE_URL that points at the same database.
+
+_removed_database_url: str | None = None
+
+
+class IntegrationSettings(BaseSettings):
+    model_config = SettingsConfigDict(case_sensitive=False, extra="ignore")
+
+    test_database_url: str | None = None
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    global _removed_database_url
+    _removed_database_url = os.environ.pop("DATABASE_URL", None)
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    if _removed_database_url is not None:
+        os.environ["DATABASE_URL"] = _removed_database_url
+
+
+def _same_database(a: str, b: str) -> bool:
+    def key(url: str) -> tuple[str | None, int, str | None]:
+        parsed = make_url(url)
+        return (parsed.host, parsed.port or 5432, parsed.database)
+
     try:
-        load_db_settings()
-    except ConfigError:
-        return False
-    return True
+        return key(a) == key(b)
+    except ArgumentError:
+        return a == b
+
+
+def integration_db_settings() -> DbSettings | None:
+    """DbSettings for TEST_DATABASE_URL, or None when it is not set."""
+    url = IntegrationSettings().test_database_url
+    if not url:
+        return None
+    if _removed_database_url and _same_database(url, _removed_database_url):
+        raise pytest.UsageError(
+            "TEST_DATABASE_URL points at the same database as DATABASE_URL. Integration "
+            "tests truncate and drop tables; use a separate, disposable database."
+        )
+    try:
+        return DbSettings(database_url=SecretStr(url))
+    except ValidationError as exc:
+        raise pytest.UsageError(f"TEST_DATABASE_URL is invalid: {exc.errors()[0]['msg']}") from None
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Skip integration tests cleanly when DATABASE_URL is not set."""
-    if _database_configured():
+    """Skip integration tests cleanly when TEST_DATABASE_URL is not set."""
+    if integration_db_settings() is not None:
         return
-    skip = pytest.mark.skip(reason="DATABASE_URL is not set")
+    skip = pytest.mark.skip(reason="TEST_DATABASE_URL is not set")
     for item in items:
         if "integration" in item.keywords:
             item.add_marker(skip)

@@ -24,7 +24,8 @@ client ──► Traefik ──► shortener (FastAPI / uvicorn, 1 process per r
 | Migrations | `app/migrations/` | Alembic, run as a separate command |
 
 Unit tests replace the repository and database with in-memory fakes;
-integration tests run the same app against a real PostgreSQL.
+integration tests run the same app against a real, disposable PostgreSQL named
+by `TEST_DATABASE_URL`. Tests never use `DATABASE_URL`.
 
 ### Key behaviours
 - **Redirects** are one atomic `UPDATE … RETURNING` statement that checks expiry

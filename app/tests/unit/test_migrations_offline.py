@@ -11,13 +11,11 @@ from alembic.config import Config
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 
 
-def test_upgrade_sql_renders_without_database(
-    clean_env: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    # Never contacted in offline mode.
-    clean_env.setenv("DATABASE_URL", "postgresql://u:p@db.invalid:5432/x")
+def test_upgrade_sql_renders_without_database(capsys: pytest.CaptureFixture[str]) -> None:
     config = Config(str(ALEMBIC_INI))
     config.attributes["configure_logging"] = False
+    # Never contacted in offline mode; passed explicitly, not via DATABASE_URL.
+    config.attributes["database_url"] = "postgresql+asyncpg://u:p@db.invalid:5432/x"
 
     command.upgrade(config, "head", sql=True)
 

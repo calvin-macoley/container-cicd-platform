@@ -65,15 +65,12 @@ commands run from `app/`.
 cd app
 uv sync                                   # install Python 3.12 deps into .venv
 
-# The parentheses run this in a subshell: the exports end with it, so the dev
-# database URL never leaks into a later test run (see the warning below).
-(
-  export DATABASE_URL=postgresql://shortener:<password>@localhost:5432/shortener
-  export APP_ENV=local APP_VERSION=0.0.0-dev GIT_SHA=0000000
-  export PUBLIC_BASE_URL=http://localhost:8000
-  uv run alembic upgrade head             # create or upgrade the schema
-  uv run python -m shortener              # serve on 0.0.0.0:8000 (Ctrl-C to stop)
-)
+export DATABASE_URL=postgresql://shortener:<password>@localhost:5432/shortener
+export APP_ENV=local APP_VERSION=0.0.0-dev GIT_SHA=0000000
+export PUBLIC_BASE_URL=http://localhost:8000
+
+uv run alembic upgrade head               # create or upgrade the schema
+uv run python -m shortener                # serve on 0.0.0.0:8000 (Ctrl-C to stop)
 ```
 
 ### Quality checks
@@ -83,14 +80,17 @@ uv run ruff check . && uv run ruff format --check .
 uv run mypy src
 uv run pytest -m "not integration"        # unit tests, no database, 85% coverage gate
 
-# Integration tests: ONLY against a disposable database.
-DATABASE_URL=postgresql://<user>:<password>@localhost:5432/<throwaway_db> \
-  uv run pytest -m integration --no-cov
+# Integration tests run against TEST_DATABASE_URL, a disposable database.
+export TEST_DATABASE_URL=postgresql://<user>:<password>@localhost:5432/<throwaway_db>
+uv run pytest -m integration --no-cov
 ```
 
-> **Warning: integration tests destroy data.** They run whenever
-> `DATABASE_URL` is set in the environment, including a plain `uv run pytest`.
+> **Integration tests destroy data, so they only use `TEST_DATABASE_URL`.**
 > They **truncate the `links` table** before every test and **drop it**
-> (`alembic downgrade base`) to check that migrations are reversible. Never
-> run them with `DATABASE_URL` pointing at a database whose data you want to
-> keep. When it is unset they are skipped automatically.
+> (`alembic downgrade base`) to check that migrations are reversible.
+>
+> - Tests **never use `DATABASE_URL`**: it is removed from the environment for
+>   the whole test run, so exporting it for the dev server (above) is safe.
+> - If `TEST_DATABASE_URL` names the same database as `DATABASE_URL` (same
+>   host, port and database name), pytest refuses to run.
+> - When `TEST_DATABASE_URL` is unset, integration tests are skipped.

@@ -1,4 +1,8 @@
-"""Alembic environment: async engine, URL from DATABASE_URL via shortener.config."""
+"""Alembic environment: async engine, URL from DATABASE_URL via shortener.config.
+
+Tests pass their own URL (from TEST_DATABASE_URL) in the "database_url" config
+attribute, so they never read DATABASE_URL.
+"""
 
 from __future__ import annotations
 
@@ -23,6 +27,11 @@ MIGRATION_ADVISORY_LOCK_KEY = 0x5_4052_7E4E
 MIGRATION_LOCK_TIMEOUT = "5s"
 
 
+def _database_url() -> str:
+    url = context.config.attributes.get("database_url")
+    return str(url) if url else load_db_settings().async_database_url
+
+
 def _configure(connection: Connection | None = None, url: str | None = None) -> None:
     context.configure(
         connection=connection,
@@ -36,7 +45,7 @@ def _configure(connection: Connection | None = None, url: str | None = None) -> 
 
 def run_migrations_offline() -> None:
     """Emit SQL to stdout instead of executing it (``alembic upgrade head --sql``)."""
-    _configure(url=load_db_settings().async_database_url)
+    _configure(url=_database_url())
     with context.begin_transaction():
         context.run_migrations()
 
@@ -48,7 +57,7 @@ def _run_sync(connection: Connection) -> None:
 
 
 async def run_migrations_online() -> None:
-    engine = create_async_engine(load_db_settings().async_database_url, poolclass=NullPool)
+    engine = create_async_engine(_database_url(), poolclass=NullPool)
     try:
         async with engine.connect() as connection:
             # Session-level lock: a second migration job waits here until the
