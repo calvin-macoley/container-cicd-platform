@@ -8,9 +8,7 @@
       "Edit(./ansible/**)",
       "Edit(./monitoring/**)",
       "Edit(./.github/workflows/**)",
-      "Edit(./Makefile)",
-      "Bash(docker:*)",
-      "Bash(docker compose:*)"
+      "Edit(./Makefile)"
     ],
     "deny": [
       "Read(./.env)",
@@ -18,8 +16,9 @@
       "Bash(terraform apply:*)",
       "Bash(terraform destroy:*)",
       "Bash(ansible-playbook:*)",
-      "Bash(docker push:*)",
       "Bash(git push:*)",
+      "Bash(docker:*)",
+      "Bash(docker compose:*)",
       "Bash(podman:*)",
       "Bash(podman-compose:*)"
     ]
