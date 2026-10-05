@@ -77,15 +77,19 @@ Files in `.claude/rules/` hold rules that must survive regardless of how `CLAUDE
 
 **Ask** covers file edits in every DevOps path: `docker/`, `deploy/`, `infra/`, `ansible/`, `monitoring/`, `.github/workflows/`, and the `Makefile`. The agent must request approval before editing these with its file tools, so it can help when I explicitly want it to. This is the technical backstop for the ownership model. It matches file edits only, not shell commands that write files; the ownership rules and my review of every diff cover that gap.
 
-**Deny** covers secrets, pushes, infrastructure changes, and all container commands:
+**Deny** covers secrets, pushes, GitHub, infrastructure changes, and all container commands:
 
-- reading `./.env` and any `vault.yml`
+- reading or editing env files anywhere in the repo: `.env` and `*.env`
+- reading any `vault.yml`
 - `terraform apply` and `terraform destroy`
 - `ansible-playbook`
 - `git push`
+- `gh` (the GitHub CLI, which could otherwise merge pull requests or change the remote repository)
 - `docker` (which includes `docker compose` and `docker push`), `docker compose`, `podman`, and `podman-compose`
 
-Container commands are denied rather than asked: I run containers myself, so the agent never builds, runs, or pushes images. Pushing code is always mine. Deployments will run only through CI pipelines, which arrive in Phase 2.
+Env files follow one naming convention so a single pattern covers them: real files are `.env` or `<name>.env` (`local.env`, `staging.env`, `qa.env`, `prod.env`), and the only tracked one is the template `.env.example`, which the agent can read. `.gitignore` ignores `.env`, `*.env`, and `.env.*` and re-includes `.env.example`.
+
+Container commands are denied rather than asked: I run containers myself, so the agent never builds, runs, or pushes images. Pushing code and anything on GitHub is always mine. Deployments will run only through CI pipelines, which arrive in Phase 2.
 
 ## Automation: hooks
 
@@ -121,7 +125,7 @@ Canary releases run the old and new application versions **at the same time agai
 2. **Plan.** Larger tasks start in plan mode: the agent proposes a plan and file list, and nothing is written until I approve it.
 3. **Implement in small steps.** After each step the agent runs `/verify` (linting, type checks, unit tests, and integration tests when `TEST_DATABASE_URL` is set) and fixes failures before continuing.
 4. **Self-review.** The `code-reviewer` subagent reviews the diff; findings are summarized and addressed.
-5. **Human review.** I review every diff. Commits use conventional commits; I make them, or the agent does when I explicitly ask. Pushing is always mine (`git push` is denied).
+5. **Human review.** I review every diff. Commits use conventional commits; I make them, or the agent does when I explicitly ask. Pushing and pull requests are always mine (`git push` and `gh` are denied).
 6. **CI as the final gate (Phase 2).** Once GitHub Actions exists, every pull request will have to pass the same checks as `/verify`, regardless of who or what wrote the code. Until then, `/verify` and my review are the gate.
 
 For platform work the loop is reversed: I write the code, run the `devops-reviewer` subagent, and decide which findings to act on.
@@ -129,7 +133,7 @@ For platform work the loop is reversed: I write the code, run the `devops-review
 ## Design principles
 
 - **Enforce, don't just instruct.** The highest-risk actions (reading secrets, pushing, applying infrastructure, running containers) are blocked by permissions, not left to a prompt.
-- **Least privilege.** The DevOps reviewer gets read-only tools; the agent cannot push code, run containers, or apply infrastructure changes.
+- **Least privilege.** The DevOps reviewer gets read-only tools; the agent cannot push code, use the GitHub CLI, run containers, or apply infrastructure changes.
 - **Keep always-on context small.** Detailed procedures live in skills and scoped `CLAUDE.md` files.
 - **Same gates for everyone.** AI-written and human-written code pass the same checks: `/verify` today, CI from Phase 2.
 - **Transparency.** This document exists so anyone reading the repository knows how AI was used and where its boundaries were.

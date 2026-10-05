@@ -11,12 +11,16 @@
       "Edit(./Makefile)"
     ],
     "deny": [
-      "Read(./.env)",
+      "Read(./**/.env)",
+      "Read(./**/*.env)",
+      "Edit(./**/.env)",
+      "Edit(./**/*.env)",
       "Read(./**/vault.yml)",
       "Bash(terraform apply:*)",
       "Bash(terraform destroy:*)",
       "Bash(ansible-playbook:*)",
       "Bash(git push:*)",
+      "Bash(gh:*)",
       "Bash(docker:*)",
       "Bash(docker compose:*)",
       "Bash(podman:*)",

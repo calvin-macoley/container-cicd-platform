@@ -1,5 +1,7 @@
-# Secrets
+# Secrets: real env files are ".env" or "<name>.env" (local.env, prod.env, ...).
+# Only the template .env.example is tracked.
 .env
+*.env
 .env.*
 !.env.example
 *.vault-pass
