@@ -1,15 +1,31 @@
 {
   "permissions": {
-    "allow": ["Bash(make:*)", "Bash(docker compose:*)", "Bash(pytest:*)"],
+    "allow": ["Bash(make:*)", "Bash(pytest:*)", "Bash(uv:*)"],
+    "ask": [
+      "Edit(./docker/**)",
+      "Edit(./deploy/**)",
+      "Edit(./infra/**)",
+      "Edit(./ansible/**)",
+      "Edit(./monitoring/**)",
+      "Edit(./.github/workflows/**)",
+      "Edit(./Makefile)",
+      "Bash(docker:*)",
+      "Bash(docker compose:*)"
+    ],
     "deny": [
-      "Read(./.env)", "Read(./**/vault.yml)",
-      "Bash(terraform apply:*)", "Bash(docker push:*)", "Bash(git push:*)"
+      "Read(./.env)",
+      "Read(./**/vault.yml)",
+      "Bash(terraform apply:*)",
+      "Bash(terraform destroy:*)",
+      "Bash(ansible-playbook:*)",
+      "Bash(docker push:*)",
+      "Bash(git push:*)"
     ]
   },
   "hooks": {
     "PostToolUse": [{
       "matcher": "Edit|Write",
-      "hooks": [{ "type": "command", "command": "cd app && ruff format . && ruff check --fix . || true" }]
+      "hooks": [{ "type": "command", "command": "uv run --directory app ruff format . && uv run --directory app ruff check --fix . || true" }]
     }]
   }
 }
