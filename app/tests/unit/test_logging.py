@@ -70,3 +70,11 @@ def test_configure_logging_writes_json_to_stdout(
     lines = [json.loads(line) for line in buffer.getvalue().splitlines()]
     assert [line["message"] for line in lines] == ["from uvicorn"]
     assert logging.getLogger("uvicorn.access").disabled
+
+
+def test_uvicorn_color_message_dropped() -> None:
+    data = json.loads(
+        JsonFormatter().format(_record("Started", color_message="\x1b[36mStarted\x1b[0m"))
+    )
+    assert "color_message" not in data
+    assert data["message"] == "Started"

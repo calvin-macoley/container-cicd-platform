@@ -12,8 +12,10 @@ from typing import Any
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
 
 # Attributes every LogRecord has; anything else was passed via ``extra=``.
+# uvicorn adds ``color_message`` (the message with ANSI colour codes); drop it.
 _RESERVED = frozenset(
-    vars(logging.LogRecord("", 0, "", 0, "", None, None)).keys() | {"message", "asctime"}
+    vars(logging.LogRecord("", 0, "", 0, "", None, None)).keys()
+    | {"message", "asctime", "color_message"}
 )
 
 
