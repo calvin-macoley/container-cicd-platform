@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": ["Bash(make:*)", "Bash(docker compose:*)", "Bash(pytest:*)"],
+    "deny": [
+      "Read(./.env)", "Read(./**/vault.yml)",
+      "Bash(terraform apply:*)", "Bash(docker push:*)", "Bash(git push:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [{
+      "matcher": "Edit|Write",
+      "hooks": [{ "type": "command", "command": "cd app && ruff format . && ruff check --fix . || true" }]
+    }]
+  }
+}
