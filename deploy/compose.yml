@@ -1,0 +1,33 @@
+---
+
+services:
+
+  shortener-app:
+    image: ghcr.io/calvin-macoley/container-cicd-platform:${IMAGE_TAG:?}
+    environment:
+        - DATABASE_URL=${DATABASE_URL:?}
+        - APP_ENV=${APP_ENV:?}
+        - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:?}
+    ports:
+      - 8000:8000
+    networks:
+      - shortener-network
+    depends_on:
+      - shortener-db
+
+  shortener-db:
+    image: docker.io/library/postgres:16.15@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d
+    environment:
+        - POSTGRES_USER=${POSTGRESDB_USER:?}
+        - POSTGRES_PASSWORD=${POSTGRESDB_ROOT_PASSWORD:?}
+        - POSTGRES_DB=${POSTGRESDB_DATABASE:?}
+    networks:
+      - shortener-network
+    volumes:
+      - pgs_data:/var/lib/postgresql/data 
+
+networks:
+  shortener-network:
+
+volumes:
+  pgs_data:
