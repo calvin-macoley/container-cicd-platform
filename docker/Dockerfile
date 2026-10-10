@@ -1,4 +1,6 @@
-FROM docker.io/library/node:22-alpine3.23 AS deps
+ARG NODE_IMAGE=docker.io/library/node:22.23.3-alpine3.24@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402
+
+FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
 
 COPY app/package*.json .
@@ -8,7 +10,7 @@ COPY app/web/package.json ./web/
 # does not install devDependencies
 RUN npm ci --omit=dev
 
-FROM docker.io/library/node:22-alpine3.23 AS build
+FROM ${NODE_IMAGE} AS build
 WORKDIR /app
 
 COPY app/package*.json .
@@ -19,7 +21,7 @@ RUN npm ci
 COPY app/ .
 RUN npm run build
 
-FROM docker.io/library/node:22-alpine3.23 AS prod
+FROM ${NODE_IMAGE} AS prod
 
 WORKDIR /app
 
