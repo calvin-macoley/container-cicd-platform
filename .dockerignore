@@ -1,0 +1,39 @@
+# Build context is the repo root: docker build -f docker/Dockerfile .
+#
+# Allowlist: exclude everything, then re-include only what the image build
+# reads. New files (secrets, infra, notes) stay out of the context by default.
+# The Dockerfile itself does not need to be in the context when passed with -f.
+*
+
+# Workspace manifests and lock (npm ci)
+!app/package.json
+!app/package-lock.json
+!app/server/package.json
+!app/web/package.json
+
+# Shared compiler settings
+!app/tsconfig.base.json
+
+# Server build: tsc -p tsconfig.build.json (src only; extends tsconfig.json)
+!app/server/tsconfig.json
+!app/server/tsconfig.build.json
+!app/server/src/
+
+# Web build: tsc --noEmit && vite build
+!app/web/tsconfig.json
+!app/web/vite.config.ts
+!app/web/index.html
+!app/web/src/
+
+# Never send these, even from inside re-included folders.
+**/node_modules
+**/dist
+**/coverage
+**/.env
+**/*.env
+**/.env.*
+
+# Tests are not built into the image.
+app/web/src/**/*.test.ts
+app/web/src/**/*.test.tsx
+app/web/src/test-utils.ts
