@@ -1,6 +1,6 @@
 ---
 name: db-migration
-description: Use when changing SQLAlchemy models or creating Alembic migrations. Enforces migrations that are safe during canary releases.
+description: Use when changing the database schema or creating Kysely migrations. Enforces migrations that are safe during canary releases.
 ---
 # Database migrations
 
@@ -17,11 +17,16 @@ database. Every migration must work with BOTH the previous and the new code.
   2. Migrate: backfill, switch reads to new column.
   3. Contract (a later release): drop the old column.
 
-## Steps
-1. Change models in src/shortener/models.py.
-2. Run `make migrate-new msg="<description>"` to autogenerate.
-3. Review the generated file by hand; autogenerate misses renames and
-   server defaults.
-4. Ensure downgrade() is implemented and actually reverses upgrade().
-5. Run upgrade, downgrade, upgrade against the test database to prove it.
-6. State in the PR description which expand/contract phase this is.
+## Steps (paths under app/server/)
+1. Add src/migrations/NNNN_short_name.ts exporting `up` and `down`, written
+   as plain SQL with Kysely's `sql` tag. Name constraints explicitly
+   (pk_/uq_/ck_/fk_ prefixes, as in 0001).
+2. Register it in `MIGRATIONS` in src/migrate.ts (order matters).
+3. Update the row types in src/db.ts to match.
+4. Ensure `down` actually reverses `up`.
+5. Prove it against the test database: with TEST_DATABASE_URL set, run
+   `npm run test -w server`; extend tests/integration/migrations.int.test.ts
+   to cover the new schema.
+6. `CREATE INDEX CONCURRENTLY` cannot run inside a transaction, and all
+   pending migrations run in one; ask before adding one.
+7. State in the PR description which expand/contract phase this is.
