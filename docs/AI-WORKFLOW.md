@@ -65,7 +65,7 @@ Personal overrides (`CLAUDE.local.md`, `.claude/settings.local.json`) are gitign
 
 The root `CLAUDE.md` is kept short because it is loaded into every session. It covers what the project is, the stack, core conventions (all config via environment variables, every endpoint tested, every schema change migrated, one image for every environment), and the ownership boundaries above.
 
-Directory-scoped `CLAUDE.md` files load only when the agent works in that directory, so app conventions don't consume context during unrelated work and vice versa. `app/CLAUDE.md` covers code structure, configuration (settings only through `config.py`), and metric labeling; `infra/terraform/CLAUDE.md` states that Terraform is plan-only.
+Directory-scoped `CLAUDE.md` files load only when the agent works in that directory, so app conventions don't consume context during unrelated work and vice versa. `app/CLAUDE.md` covers code structure, configuration (settings only through `server/src/config.ts`), and metric labeling; `infra/terraform/CLAUDE.md` states that Terraform is plan-only.
 
 Files in `.claude/rules/` hold rules that must survive regardless of how `CLAUDE.md` evolves: `security.md` (no hardcoded secrets, no reading or modifying `.env` or vault files, no commands that change remote infrastructure, non-root containers with pinned base images) and `devops-ownership.md` (the AI does not create or modify platform files, including `.claude/settings.json`, unless explicitly asked in the current message).
 

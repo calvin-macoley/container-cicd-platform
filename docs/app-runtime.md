@@ -13,11 +13,12 @@ through test → staging → QA → prod. Only environment variables differ.**
 
 | Item | Value |
 |---|---|
-| Runtime | Python 3.12, dependencies locked in `app/uv.lock` |
-| Start command | `python -m shortener` |
-| Migration command | `alembic -c /path/to/alembic.ini upgrade head` (separate job; never at app startup) |
+| Runtime | Node 22, dependencies locked in `app/package-lock.json` |
+| Start command | `node server/dist/main.js` |
+| Migration command | `node server/dist/migrate.js` (separate job; never at app startup) |
 | Listen address | `0.0.0.0:$PORT` (default `8000`), plain HTTP |
 | Processes | One per container; scale with replicas |
+| Web UI | `GET /` and `/assets/*`, same port |
 | Liveness | `GET /healthz` → 200 |
 | Readiness | `GET /readyz` → 200 ready, 503 not ready |
 | Build identity | `GET /version` |
@@ -32,29 +33,42 @@ through test → staging → QA → prod. Only environment variables differ.**
 
 ## 2. Building the image
 
-### What the image needs from `app/`
+### What the build needs from `app/`
 
 | Path | Why |
 |---|---|
-| `pyproject.toml`, `uv.lock`, `.python-version` | Dependency definition and lock |
-| `src/` | Application package (only needed at install time if installed non-editable) |
-| `alembic.ini`, `migrations/` | Needed at **runtime** by the migration command |
+| `package.json`, `package-lock.json` | Workspace definition and lock |
+| `tsconfig.base.json` | Shared compiler settings |
+| `server/` (`package.json`, `tsconfig*.json`, `src/`) | API source |
+| `web/` (`package.json`, `tsconfig.json`, `vite.config.ts`, `index.html`, `src/`) | UI source |
 
-Tests, `.venv/` and caches should not be in the image.
+Tests, `node_modules/`, `dist/` and coverage output should not be copied in
+from the host.
 
-### Installing
-
-A production install, verified to run without the source tree and without
-dev dependencies:
+### Building
 
 ```sh
-uv sync --frozen --no-dev --no-editable
+npm ci                  # exact versions from package-lock.json; fails if it is stale
+npm run build           # server/dist (compiled JS) and web/dist (static UI)
 ```
 
-This creates `.venv/` containing the `shortener` package plus the `alembic`
-and `uvicorn` executables. Put `.venv/bin` on `PATH` (or call it explicitly).
-`--frozen` makes the build fail rather than silently re-resolve if the lock
-file is stale.
+### What the runtime image needs
+
+Production dependencies plus the two build outputs, **with this layout kept**
+(paths relative to the app directory, e.g. `/app`):
+
+| Path | Contents |
+|---|---|
+| `package.json`, `package-lock.json`, `server/package.json`, `web/package.json` | Needed by `npm ci --omit=dev` |
+| `node_modules/` | Production dependencies only: `npm ci --omit=dev` |
+| `server/dist/` | The server, including `migrate.js` and `migrations/` |
+| `web/dist/` | The built UI |
+
+The server finds the UI at `../../web/dist` relative to `server/dist/`, so
+`server/` and `web/` must stay side by side. If `web/dist/index.html` is
+missing the server still starts and serves only the API (`/` returns 404).
+The web workspace has no runtime dependencies; its `node_modules` entries are
+build-time only.
 
 ### Build-time values: `GIT_SHA` and `APP_VERSION`
 
@@ -75,20 +89,20 @@ is live, so they must be correct:
 
 ### Process and signals
 
-- Use the **exec form** for the command, e.g. `["python", "-m", "shortener"]`.
-  The shell form wraps the process in `/bin/sh`, which does not forward
-  SIGTERM, so the app would be killed instead of shut down gracefully.
-- The app runs fine as PID 1, and its exit codes are the same with or without
-  an init such as `tini` (§7).
-- Optional: `PYTHONDONTWRITEBYTECODE=1` (skip `.pyc` writes) and
-  `PYTHONUNBUFFERED=1`. Logs are flushed per line regardless.
+- Use the **exec form** for the command, e.g. `["node", "server/dist/main.js"]`.
+  Do **not** start it through `npm start`: npm and the shell form both sit
+  between the signal and the process, so SIGTERM may not reach the app and it
+  is killed instead of shut down gracefully.
+- The app installs its own SIGTERM and SIGINT handlers, so it shuts down
+  correctly as PID 1, with or without an init such as `tini` (§7).
+- Optional: `NODE_ENV=production`. Behaviour does not depend on it.
 
 ---
 
 ## 3. Starting the service
 
 ```sh
-python -m shortener
+node server/dist/main.js
 ```
 
 On start the process:
@@ -104,7 +118,7 @@ It does **not** connect to the database at startup. The pool connects on first
 use, so the process starts (and passes liveness) even while the database is
 down. Readiness reports the database state (§6).
 
-`/healthz` answered about 0.6 s after launch in local testing; no startup
+`/healthz` answered about 0.4 s after launch in local testing; no startup
 probe is needed.
 
 ---
@@ -152,25 +166,39 @@ including old and new versions running side by side during a canary.
 ### Running migrations
 
 ```sh
-alembic -c /path/to/app/alembic.ini upgrade head
+node server/dist/migrate.js           # same as: node server/dist/migrate.js up
 ```
 
 - Needs only `DATABASE_URL`; the other variables are not required.
-- Works from any working directory when given `-c`.
-- **Idempotent:** if the database is already at the latest version, it does
-  nothing and exits 0. Exits non-zero on failure.
-- Logs JSON to stdout, like the app.
+- Works from any working directory.
+- **Idempotent:** if the database is already at the latest version, it logs
+  `"nothing to migrate"` and exits 0. Exit codes: 0 success, 1 migration
+  failed, 2 bad arguments, 78 invalid configuration.
+- Logs JSON to stdout, like the app (`logger: shortener.migrate`).
 - **Run it once per deploy, before the new version receives traffic**, as a
   separate one-off job or init step. The app never migrates itself.
 - **Concurrent jobs are safe:** each job takes a PostgreSQL advisory lock, so
   a second job waits for the first, then finds nothing to do.
+- **All pending migrations run in one transaction:** if any fails, none of
+  them is applied.
 - **Lock timeout of 5 s:** if a migration statement cannot get its table lock
   within 5 s (e.g. a long-running query holds it), the job fails with
-  `LockNotAvailableError` instead of queueing live traffic behind it. The
-  database is left as it was before that migration; retry the job.
+  `canceling statement due to lock timeout` (SQLSTATE `55P03`) instead of
+  queueing live traffic behind it. The database is left as it was; retry the
+  job.
+- `node server/dist/migrate.js down` reverts the latest migration. It is for
+  development only (see below).
+- Bookkeeping lives in the tables `kysely_migration` and
+  `kysely_migration_lock`.
 
-Other useful commands: `alembic … current` (shows the applied version) and
-`alembic … upgrade head --sql` (prints SQL without running it).
+### Moving from the Python service
+
+The first migration recognises a database created by the Python service
+(table `links` present and `alembic_version` at `0001`). It records itself
+without touching the table, so existing links survive. The old
+`alembic_version` table is left in place and is harmless; drop it once you no
+longer need to roll back to the Python image. If a `links` table exists that
+Alembic did not create, the migration fails rather than guess.
 
 ### Canary safety
 
@@ -216,7 +244,7 @@ readiness every 5 s, failing after 2.
 | `http_request_duration_seconds` | histogram | `method`, `route`, `status` |
 | `app_build_info` | gauge (always 1) | `version`, `git_sha`, `environment` |
 | `app_chaos_error_rate` | gauge | (none) |
-| `process_*`, `python_*` | standard | |
+| `process_*`, `nodejs_*` | standard (prom-client defaults) | |
 
 - `route` is the route **template**, never the raw path: `/api/links`,
   `/api/links/{code}`, `/{code}`, `/healthz`, …. Requests that match no route
@@ -244,19 +272,19 @@ readiness every 5 s, failing after 2.
 One JSON object per line on stdout; nothing is written to stderr or files.
 
 ```json
-{"timestamp": "2026-10-05T20:15:01.123+00:00", "level": "INFO", "logger": "shortener.access",
- "message": "request", "request_id": "4f0c…", "method": "GET", "route": "/{code}",
- "path": "/aB3xK9q", "status": 307, "duration_ms": 3.41}
+{"level": "INFO", "timestamp": "2026-10-10T07:12:27.125Z", "logger": "shortener.access",
+ "request_id": "4f0c…", "method": "GET", "route": "/{code}", "path": "/aB3xK9q",
+ "status": 307, "duration_ms": 3.41, "message": "request"}
 ```
 
 - Every line has `timestamp` (UTC), `level`, `logger`, `message` and
   `request_id` (`null` outside a request).
-- One exception: if a request crashes **after** its response has started
-  streaming, uvicorn logs the error after the request has finished, so that
-  line has `request_id: null`. The app's own error line for the same failure
-  carries the ID.
-- One access-log line per request (`logger: shortener.access`).
-- Errors include a full traceback in `exc_info`, still on one line.
+- One access-log line per request (`logger: shortener.access`). Requests for
+  UI assets share `route="/assets/*"`.
+- Errors include `exc_info` as an object (`type`, `message`, `stack`), still
+  on one line.
+- Levels are `DEBUG`, `INFO`, `WARNING`, `ERROR` and `CRITICAL` (invalid
+  configuration).
 
 ### Request IDs
 
@@ -330,10 +358,10 @@ rollback works.
 | `/healthz`, `/readyz` | Probes | Not needed |
 | `/version` | Build identity | Harmless; your choice |
 | `/metrics` | Prometheus | **No.** Restrict to the monitoring network. |
-| `/docs`, `/redoc`, `/openapi.json` | API documentation | Your choice; consider blocking in prod |
+| `/`, `/assets/*` | Web UI | Yes, if you want people to use the UI; it can create and delete links (see limitation below) |
 
-- **There is no authentication.** Anyone who can reach `/api/links` can create
-  or delete any link. Restrict access at the edge (Traefik middleware, IP
+- **There is no authentication.** Anyone who can reach `/api/links` (directly
+  or through the UI) can create or delete any link. Restrict access at the edge (Traefik middleware, IP
   allow-list or an auth proxy) if that matters for your environment.
 - TLS is terminated at the edge; the app speaks plain HTTP.
 - No rate limiting in the app.

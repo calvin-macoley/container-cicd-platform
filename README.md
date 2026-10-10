@@ -1,11 +1,12 @@
 # Container CI/CD Platform
 
-A URL-shortener REST API used to demonstrate container-based delivery across
-multiple environments (test → staging → QA → prod). The same image runs
-everywhere; only environment variables differ.
+A URL shortener (REST API and web UI) used to demonstrate container-based
+delivery across multiple environments (test → staging → QA → prod). The same
+image runs everywhere; only environment variables differ.
 
-- **Application** (`app/`): Python 3.12, FastAPI, async SQLAlchemy 2.x,
-  Alembic, PostgreSQL 16.
+- **Application** (`app/`): TypeScript on Node 22. `app/server`: Express 5,
+  Zod, Kysely + node-postgres, pino, prom-client. `app/web`: React 19 + Vite,
+  served by the server. PostgreSQL 16. See [ADR 002](docs/adr/002-typescript-express-react.md).
 - **Platform**: Dockerfiles, compose files, CI workflows, Terraform, Ansible,
   Traefik and monitoring, built against the
   [runtime contract](docs/app-runtime.md).
@@ -30,8 +31,17 @@ everywhere; only environment variables differ.
 | `GET` | `/readyz` | 200 | 503 | Readiness; checks the database |
 | `GET` | `/version` | 200 | | `{"version", "git_sha", "environment"}` |
 | `GET` | `/metrics` | 200 | | Prometheus metrics |
+| `GET` | `/` and `/assets/*` | 200 | | Web UI (when built) |
 
-Interactive docs are served at `/docs`.
+Errors are JSON: `{"detail": "<message>"}`, or for request validation
+`{"detail": [{"type", "loc", "msg"}, …]}` with status 422. Other methods on a
+known path return 405 with an `Allow` header.
+
+## Web UI
+
+Open `/` in a browser to shorten a URL (optional alias and expiry), copy the
+short link, look up a link's clicks by code or short URL, and delete it. The
+footer shows the serving build's version, git SHA and environment.
 
 ### Creating a link
 
@@ -47,8 +57,8 @@ curl -s -X POST http://localhost:8000/api/links \
   slash (`https://example.com` → `https://example.com/`) and international
   domain names are converted to punycode.
 - `alias` (optional): 3–32 characters from `A-Z a-z 0-9 _ -`. Reserved names
-  (`api`, `healthz`, `readyz`, `version`, `metrics`, `docs`, `redoc`) are
-  refused. Without an alias, a random 7-character code is generated.
+  (`api`, `assets`, `healthz`, `readyz`, `version`, `metrics`, `docs`,
+  `redoc`, `openapi.json`) are refused. Without an alias, a random 7-character code is generated.
 - `expires_at` (optional): an ISO 8601 timestamp **with a timezone**, in the
   future. Expired links stop redirecting (404) but stay visible in
   `GET /api/links/{code}`.
@@ -58,39 +68,39 @@ curl -s -X POST http://localhost:8000/api/links \
 
 ## Local development
 
-Requires [uv](https://docs.astral.sh/uv/) and a PostgreSQL 16 database. All
-commands run from `app/`.
+Requires Node 22 and a PostgreSQL 16 database. All commands run from `app/`.
 
 ```sh
 cd app
-uv sync                                   # install Python 3.12 deps into .venv
+npm ci                                    # install server and web dependencies
 
 export DATABASE_URL=postgresql://shortener:<password>@localhost:5432/shortener
 export APP_ENV=local APP_VERSION=0.0.0-dev GIT_SHA=0000000
 export PUBLIC_BASE_URL=http://localhost:8000
 
-uv run alembic upgrade head               # create or upgrade the schema
-uv run python -m shortener                # serve on 0.0.0.0:8000 (Ctrl-C to stop)
+npm run build                             # server/dist and web/dist
+node server/dist/migrate.js               # create or upgrade the schema
+node server/dist/main.js                  # API + UI on 0.0.0.0:8000 (Ctrl-C to stop)
 ```
+
+For live reload, run `npm run dev -w server` and `npm run dev -w web` in two
+terminals, then open the Vite URL; it proxies API paths to port 8000.
 
 ### Quality checks
 
 ```sh
-uv run ruff check . && uv run ruff format --check .
-uv run mypy src
-uv run pytest -m "not integration"        # unit tests, no database, 85% coverage gate
+npm run verify                            # lint, format, typecheck, unit tests (server + web)
 
 # Integration tests run against TEST_DATABASE_URL, a disposable database.
 export TEST_DATABASE_URL=postgresql://<user>:<password>@localhost:5432/<throwaway_db>
-uv run pytest -m integration --no-cov
+npm run test -w server
 ```
 
 > **Integration tests destroy data, so they only use `TEST_DATABASE_URL`.**
-> They **truncate the `links` table** before every test and **drop it**
-> (`alembic downgrade base`) to check that migrations are reversible.
+> They **truncate the `links` table** before every test and **drop it** to
+> check that migrations are reversible.
 >
-> - Tests **never use `DATABASE_URL`**: it is removed from the environment for
->   the whole test run, so exporting it for the dev server (above) is safe.
-> - If `TEST_DATABASE_URL` names the same database as `DATABASE_URL` (same
->   host, port and database name), pytest refuses to run.
+> - Tests **never use `DATABASE_URL`**; it is read only to refuse a
+>   `TEST_DATABASE_URL` that names the same database (same host, port and
+>   database name), so exporting it for the dev server (above) is safe.
 > - When `TEST_DATABASE_URL` is unset, integration tests are skipped.

@@ -1,6 +1,6 @@
 # 001. FastAPI and async SQLAlchemy for the shortener API
 
-- Status: Proposed
+- Status: Superseded by [002](002-typescript-express-react.md)
 - Date: 2026-10-05
 
 ## Context

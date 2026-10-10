@@ -1,16 +1,17 @@
 # Container CI/CD Platform
-URL-shortener API used to demonstrate container-based multi-environment delivery.
+URL shortener (API + web UI) used to demonstrate container-based multi-environment delivery.
 
 ## Commands
 Until the Makefile exists, run from app/:
-- uv run ruff check . && uv run ruff format --check .
-- uv run mypy src
-- uv run pytest
+- npm ci
+- npm run verify          (lint + format check + typecheck + unit tests)
+- npm run build           (server/dist and web/dist)
 
 ## Conventions
-- Python 3.12, FastAPI, SQLAlchemy 2.x, Alembic, pytest
-- All config via env vars (pydantic-settings). No secrets in code or compose files.
-- Every endpoint needs a test. Every schema change needs an Alembic migration.
+- Node 22, TypeScript (strict), Express 5, Zod, Kysely + pg, pino, prom-client, Vitest
+- Web UI: React 19 + Vite, served by the server from the same image
+- All config via env vars (validated in server/src/config.ts). No secrets in code or compose files.
+- Every endpoint needs a test. Every schema change needs a Kysely migration.
 - The same image runs in every environment; only env vars differ.
 
 ## Boundaries
