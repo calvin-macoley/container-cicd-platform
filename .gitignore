@@ -10,16 +10,6 @@
 CLAUDE.local.md
 .claude/settings.local.json
 
-# Python
-__pycache__/
-*.pyc
-.venv/
-.coverage
-htmlcov/
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
-
 # Terraform
 .terraform/
 *.tfstate
