@@ -25,3 +25,8 @@ htmlcov/
 *.tfstate
 *.tfstate.*
 *.tfplan
+
+# Node
+node_modules/
+dist/
+coverage/
