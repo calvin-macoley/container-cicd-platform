@@ -36,6 +36,7 @@ COPY --from=build /app/web/package.json ./web/
 ARG GIT_SHA 
 ARG APP_VERSION
 ENV GIT_SHA=$GIT_SHA APP_VERSION=$APP_VERSION
+ENV NODE_ENV=production
 USER node
 
 EXPOSE 8000
